@@ -1,6 +1,6 @@
 use structopt::StructOpt;
 use sway_dap::Service;
-use tracing::{info, trace};
+use tracing::{error, info, trace};
 
 use std::io;
 
@@ -17,7 +17,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stdout = io::stdout();
     let mut service = Service::from(addr);
 
-    while service.handle(stdin.lock(), stdout.lock()).await? {}
+    while match service.handle(stdin.lock(), stdout.lock()).await {
+        Ok(proceed) => proceed,
+        Err(e) => {
+            error!("Error handling request: {}", e);
+            true
+        }
+    } {}
 
     info!("Sway-DAP shutting down!");
 

@@ -1,7 +1,10 @@
-use crate::{Client, Message, MessageClass, Request, Response, ResponseVariant, Status};
+use crate::{
+    Client, Expression, Instruction, Message, MessageClass, Output, OutputVariant, Request, Status,
+};
 use std::convert::TryFrom;
 use std::io::{self, BufRead, Write};
 use std::net;
+use std::str::FromStr;
 
 use tracing::{debug, info, warn};
 
@@ -42,47 +45,154 @@ impl Service {
         Ok(proceed)
     }
 
-    async fn handle_request<O>(&mut self, output: O, message: Message) -> io::Result<bool>
+    async fn handle_request<O>(&mut self, mut output: O, message: Message) -> io::Result<bool>
     where
         O: Write,
     {
         let request = Request::try_from(message)?;
-        let mut proceed = true;
 
         debug!("{} request accepted", request.command());
-        let response = match &request {
-            Request::Initialize(_, _) => Response::new(
-                &request,
+        let proceed = match self.handle_request_inner(output.by_ref(), &request).await {
+            Ok(p) => p,
+            Err(e) => {
+                Output::new(
+                    &request,
+                    Status::Error,
+                    OutputVariant::Output(format!("{}", e)),
+                )
+                .send(output.by_ref())?;
+
+                return Err(e);
+            }
+        };
+
+        Ok(proceed)
+    }
+
+    async fn handle_request_inner<O>(&mut self, output: O, request: &Request) -> io::Result<bool>
+    where
+        O: Write,
+    {
+        let mut proceed = true;
+
+        match request {
+            Request::Initialize(_, _) => Output::new(
+                request,
                 Status::Success,
-                ResponseVariant::InitializeResponse(None),
-            ),
+                OutputVariant::InitializeResponse(None),
+            )
+            .send(output)?,
 
             Request::Launch(_, _) => {
                 let session = self.dap.start_session().await?;
                 info!("Debug session {} started", session);
 
-                self.session.replace(session);
+                Output::new(request, Status::Success, OutputVariant::LaunchResponse)
+                    .batch(Output::new(
+                        request,
+                        Status::Success,
+                        OutputVariant::Output(format!("Session {} started", session)),
+                    ))
+                    .send(output)?;
 
-                Response::new(&request, Status::Success, ResponseVariant::LaunchResponse)
+                self.session.replace(session);
             }
 
             Request::Disconnect(_, _, args) => {
                 proceed = args.restart.unwrap_or(true);
-                Response::new(
-                    &request,
-                    Status::Success,
-                    ResponseVariant::DisconnectResponse,
-                )
+                let session = self.session.take();
+
+                match session {
+                    Some(s) if proceed => {
+                        let reset = self.dap.reset(s.as_str()).await?;
+                        let status = if reset {
+                            debug!("Instance {} reset", s);
+                            Status::Success
+                        } else {
+                            debug!("Failed to reset instance {}", s);
+                            Status::ErrorMessage("Failed to reset VM instance!".to_owned())
+                        };
+
+                        Output::new(request, status, OutputVariant::DisconnectResponse)
+                            .send(output)?
+                    }
+
+                    Some(s) if self.dap.end_session(s.as_str()).await? => {
+                        debug!("Disconnect session {} executed!", s.as_str());
+
+                        Output::new(request, Status::Success, OutputVariant::DisconnectResponse)
+                            .send(output)?
+                    }
+
+                    Some(s) => {
+                        warn!(
+                            "Disconnect session {} attempted but drop failed!",
+                            s.as_str()
+                        );
+
+                        Output::new(
+                            request,
+                            Status::ErrorMessage("Backend failed to drop session!".to_owned()),
+                            OutputVariant::DisconnectResponse,
+                        )
+                        .send(output)?
+                    }
+
+                    None => {
+                        debug!("Disconnect request received without initialized session!");
+
+                        Output::new(
+                            request,
+                            Status::ErrorMessage("No session initialized!".to_owned()),
+                            OutputVariant::DisconnectResponse,
+                        )
+                        .send(output)?
+                    }
+                }
             }
 
-            _ => {
-                warn!("Request '{}' not implemented", request.command());
+            Request::Evaluate(_, _, args) => {
+                let instruction = Instruction::from_str(args.expression.as_str())?;
+                let s = self.session.as_ref().ok_or(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Debug session not initialized!",
+                ))?;
 
-                return Ok(true);
+                let result = match instruction {
+                    Instruction::Print(Expression::Word(w)) => format!("0x{:x}", w),
+                    Instruction::Print(Expression::Register(r)) => {
+                        format!("0x{:x}", self.dap.register(s.as_str(), r).await?)
+                    }
+                    Instruction::Print(Expression::Memory(start, size)) => {
+                        format!("0x{}", self.dap.memory(s.as_str(), start, size).await?)
+                    }
+                    Instruction::Exec(op) => match self.dap.execute(s.as_str(), op).await {
+                        Ok(true) => "".to_owned(),
+                        _ => "Failed to execute provided command!".to_owned(),
+                    },
+                    Instruction::Quit => match &self.session {
+                        Some(s) => {
+                            debug!("Received 'quit' instruction");
+                            self.dap.end_session(s.as_str()).await?;
+                            proceed = false;
+                            "Bye!".to_owned()
+                        }
+                        None => "Received 'quit' instruction with no active session".to_owned(),
+                    },
+                };
+
+                if !result.is_empty() {
+                    Output::new(
+                        request,
+                        Status::Success,
+                        OutputVariant::EvaluateResponse(result),
+                    )
+                    .send(output)?
+                }
             }
-        };
 
-        response.send(output)?;
+            _ => warn!("Request '{}' not implemented", request.command()),
+        }
 
         Ok(proceed)
     }

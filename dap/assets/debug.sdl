@@ -1,0 +1,22 @@
+type QueryRoot {
+	events: [DebugEvent!]!
+	register(id: ID!, register: Int!): Int!
+	memory(id: ID!, start: Int!, size: Int!): String!
+}
+type DebugEvent {
+	description: String!
+}
+type MutationRoot {
+	startSession: ID!
+	endSession(id: ID!): Boolean!
+	reset(id: ID!): Boolean!
+	execute(id: ID!, op: String!): Boolean!
+}
+type SubscriptionRoot {
+	events(session: ID!): DebugEvent!
+}
+schema {
+	query: QueryRoot
+	mutation: MutationRoot
+	subscription: SubscriptionRoot
+}

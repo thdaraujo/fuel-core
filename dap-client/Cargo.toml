@@ -1,0 +1,15 @@
+[package]
+name = "dap-client"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+hex = "0.4"
+surf = "2.2"
+cynic = {version="0.14", features = ["surf"]}
+fuel-vm = {git="ssh://git@github.com/FuelLabs/fuel-vm.git"}
+
+[dev-dependencies]
+actix-rt = "1.1"
+actix-web = "3.3"
+fuel-core = {path="../fuel-core"}

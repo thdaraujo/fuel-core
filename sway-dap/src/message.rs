@@ -1,4 +1,3 @@
-use crate::schema;
 use std::io::{self, BufRead};
 
 use serde::{Deserialize, Serialize};
@@ -14,11 +13,11 @@ pub enum MessageClass {
 pub struct Message {
     request: String,
     class: MessageClass,
-    message: schema::ProtocolMessage,
+    message: dap::ProtocolMessage,
 }
 
 impl Message {
-    pub const fn schema(&self) -> &schema::ProtocolMessage {
+    pub const fn schema(&self) -> &dap::ProtocolMessage {
         &self.message
     }
 
@@ -81,7 +80,7 @@ impl Message {
 
         debug!("RECV {}", request);
 
-        let message: schema::ProtocolMessage = serde_json::from_str(request.as_str())?;
+        let message: dap::ProtocolMessage = serde_json::from_str(request.as_str())?;
         let class = match message.type_.as_str() {
             "request" => MessageClass::Request,
             _ => MessageClass::Unimplemented,
