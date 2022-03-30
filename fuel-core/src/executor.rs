@@ -163,31 +163,19 @@ impl Executor {
                 block_db_transaction.deref_mut(),
             )?;
 
-            let status = if vm_result.should_revert() {
-                self.log_backtrace(&vm, vm_result.receipts());
-                // if script result exists, log reason
-                if let Some((script_result, _)) = vm_result.receipts().iter().find_map(|r| {
-                    if let Receipt::ScriptResult { result, gas_used } = r {
-                        Some((result, gas_used))
-                    } else {
-                        None
-                    }
+            let status = if let Some(script_error) =
+                vm_result.receipts().iter().find_map(|r| match r {
+                    // if panic or revert exists, log reason
+                    Receipt::Revert { .. } | Receipt::Panic { .. } => Some(r),
+                    _ => None,
                 }) {
-                    TransactionStatus::Failed {
-                        block_id: Default::default(),
-                        time: block.header.time,
-                        reason: format!("{:?}", script_result.reason()),
-                        result: Some(*vm_result.state()),
-                    }
-                }
-                // otherwise just log the revert arg
-                else {
-                    TransactionStatus::Failed {
-                        block_id: Default::default(),
-                        time: block.header.time,
-                        reason: format!("{:?}", vm_result.state()),
-                        result: Some(*vm_result.state()),
-                    }
+                self.log_backtrace(&vm, vm_result.receipts());
+
+                TransactionStatus::Failed {
+                    block_id: Default::default(),
+                    time: block.header.time,
+                    reason: format!("{:?}", script_error),
+                    result: Some(*vm_result.state()),
                 }
             } else {
                 // else tx was a success
