@@ -50,7 +50,7 @@ async fn balance() {
         .unwrap();
     assert_eq!(balance, 300);
 
-    // TODO: Spend coin and check again
+    // spend some coins and check again
     let coins = client
         .coins_to_spend(
             format!("{:#x}", owner).as_str(),
