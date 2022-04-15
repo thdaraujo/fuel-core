@@ -3,7 +3,7 @@ use fuel_core::{
     service::{Config, FuelService},
 };
 use fuel_gql_client::client::{FuelClient, PageDirection, PaginationRequest};
-use fuel_tx::AssetId;
+use fuel_tx::{AssetId, Input, Output, Transaction};
 use fuel_vm::prelude::Address;
 
 #[tokio::test]
@@ -49,6 +49,66 @@ async fn balance() {
         .await
         .unwrap();
     assert_eq!(balance, 300);
+
+    // TODO: Spend coin and check again
+    let coins = client
+        .coins_to_spend(
+            format!("{:#x}", owner).as_str(),
+            vec![(format!("{:#x}", asset_id).as_str(), 1)],
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    client
+        .submit(&Transaction::Script {
+            gas_price: 0,
+            gas_limit: 1_000_000,
+            byte_price: 0,
+            maturity: 0,
+            receipts_root: Default::default(),
+            script: vec![],
+            script_data: vec![],
+            inputs: coins
+                .into_iter()
+                .map(|coin| Input::Coin {
+                    utxo_id: coin.utxo_id.into(),
+                    owner: coin.owner.into(),
+                    amount: coin.amount.into(),
+                    asset_id: coin.asset_id.into(),
+                    maturity: coin.maturity.into(),
+                    witness_index: 0,
+                    predicate: vec![],
+                    predicate_data: vec![],
+                })
+                .collect(),
+            outputs: vec![
+                Output::Coin {
+                    to: Address::new([1u8; 32]),
+                    amount: 1,
+                    asset_id,
+                },
+                Output::Change {
+                    to: owner,
+                    amount: 0,
+                    asset_id,
+                },
+            ],
+            witnesses: vec![vec![].into()],
+            metadata: None,
+        })
+        .await
+        .unwrap();
+
+    let balance = client
+        .balance(
+            format!("{:#x}", owner).as_str(),
+            Some(format!("{:#x}", asset_id).as_str()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(balance, 299);
 }
 
 #[tokio::test]
