@@ -5,6 +5,7 @@ use crate::{
     tx_pool::TransactionStatus,
 };
 use fuel_asm::Word;
+use fuel_core_interfaces::db::KvStoreError::Error;
 use fuel_merkle::{binary::MerkleTree, common::StorageMap};
 use fuel_storage::Storage;
 use fuel_tx::{
@@ -294,7 +295,7 @@ impl Executor {
                     Default::default()
                 };
 
-                Storage::<UtxoId, Coin>::insert(
+                let coin = Storage::<UtxoId, Coin>::insert(
                     db,
                     utxo_id,
                     &Coin {
@@ -306,6 +307,21 @@ impl Executor {
                         block_created,
                     },
                 )?;
+
+                if let Some(coin) = coin {
+                    // coin was already in a spent state before this most recent update, invalid block
+                    if CoinStatus::Spent == coin {
+                        return Err(Error::TransactionValidity(
+                            TransactionValidityError::CoinAlreadySpent,
+                        ));
+                    }
+                } else {
+                    // no pre-existing coin record was updated,
+                    // meaning it wasn't a valid part of the utxo set for some reason
+                    return Err(Error::TransactionValidity(
+                        TransactionValidityError::CoinDoesntExist,
+                    ));
+                }
             }
         }
         Ok(())
