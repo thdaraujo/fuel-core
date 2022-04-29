@@ -1,6 +1,7 @@
-use cynic::{http::SurfExt, MutationBuilder, Operation, QueryBuilder};
+use cynic::{http::ReqwestExt, MutationBuilder, Operation, QueryBuilder};
 use fuel_vm::prelude::*;
 use itertools::Itertools;
+use reqwest::Url;
 use schema::{
     balance::BalanceArgs,
     block::BlockByIdArgs,
@@ -24,14 +25,14 @@ pub mod types;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FuelClient {
-    url: surf::Url,
+    url: Url,
 }
 
 impl FromStr for FuelClient {
     type Err = anyhow::Error;
 
     fn from_str(str: &str) -> Result<Self, Self::Err> {
-        let mut url = surf::Url::parse(str)?;
+        let mut url = Url::parse(str)?;
         url.set_path("/graphql");
         Ok(Self { url })
     }
@@ -55,7 +56,9 @@ impl FuelClient {
     }
 
     async fn query<'a, R: 'a>(&self, q: Operation<'a, R>) -> io::Result<R> {
-        let response = surf::post(&self.url)
+        let client = reqwest::Client::new();
+        let response = client
+            .post(self.url.clone())
             .run_graphql(q)
             .await
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
