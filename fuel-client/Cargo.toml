@@ -18,6 +18,7 @@ path = "src/main.rs"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "3.1", features = ["derive"] }
+# todo: this is turning on too many features in reqwest
 cynic = { version = "0.14", features = ["reqwest"] }
 derive_more = { version = "0.99" }
 fuel-storage = "0.1"
