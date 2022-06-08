@@ -16,7 +16,6 @@ env:
 
 jobs:
   deploy:
-    # Deploy Latest Fuel-Core Release
     runs-on: ubuntu-latest
     steps:
       - name: Set Environment Variables
