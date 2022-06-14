@@ -5,7 +5,7 @@ pub enum BlockProducerMpsc {
     Produce {
         // add needed information for block to be produced
         height: BlockHeight,
-        response: oneshot::Sender<Box<FuelBlock>>,
+        response: oneshot::Sender<anyhow::Result<Box<FuelBlock>>>,
     },
     Stop,
 }

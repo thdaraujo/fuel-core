@@ -2185,10 +2185,12 @@ name = "fuel-block-producer"
 version = "0.8.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "chrono",
  "fuel-core-interfaces",
- "fuel-types",
  "parking_lot 0.12.1",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2266,6 +2268,7 @@ dependencies = [
  "derive_more",
  "fuel-asm",
  "fuel-crypto",
+ "fuel-merkle 0.2.0",
  "fuel-storage 0.1.0",
  "fuel-tx",
  "fuel-types",

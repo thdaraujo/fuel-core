@@ -17,6 +17,7 @@ chrono = { version = "0.4", features = ["serde"] }
 derive_more = { version = "0.99" }
 fuel-asm = "0.5"
 fuel-crypto = { version = "0.5", default-features = false }
+fuel-merkle = "0.2"
 fuel-storage = "0.1"
 fuel-tx = { version = "0.12", default-features = false }
 fuel-types = { version = "0.5", default-features = false }

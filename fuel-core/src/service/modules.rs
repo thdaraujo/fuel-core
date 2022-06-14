@@ -42,7 +42,7 @@ pub async fn start_modules(config: &Config, database: &Database) -> Result<Modul
     let block_importer =
         FuelBlockImporterService::new(&FuelBlockImporterConfig::default(), db).await?;
     let block_producer =
-        FuelBlockProducerService::new(&FuelBlockProducerConfig::default(), db).await?;
+        FuelBlockProducerService::new(&FuelBlockProducerConfig::default(), db, todo!()).await?;
     let bft = FuelCoreBftService::new(&FuelCoreBftConfig::default(), db).await?;
     let sync = FuelSyncService::new(&FuelSyncConfig::default()).await?;
     // let mut relayer = FuelRelayer::new(FuelRelayerConfig::default());
@@ -56,7 +56,7 @@ pub async fn start_modules(config: &Config, database: &Database) -> Result<Modul
     let relayer_mpsc = ();
 
     block_importer.start().await;
-    block_producer.start(txpool_mpsc).await;
+    block_producer.start(todo!(), todo!()).await;
     bft.start(
         relayer_mpsc,
         p2p_broadcast_consensus,
