@@ -202,6 +202,7 @@ async fn concurrent_tx_submission_produces_expected_number_of_blocks() {
     let mut rng = StdRng::seed_from_u64(2322u64);
     let mut test_builder = TestSetupBuilder::new(100);
 
+    // generate random txs
     let secret = SecretKey::random(&mut rng);
     let txs = (0..TEST_TXS)
         .into_iter()
@@ -223,8 +224,10 @@ async fn concurrent_tx_submission_produces_expected_number_of_blocks() {
         })
         .collect_vec();
 
+    // collect all tx ids
     let tx_ids: HashSet<_> = txs.iter().map(|tx| tx.id()).collect();
 
+    // setup the genesis coins for spending
     test_builder.config_coin_inputs_from_transactions(&txs.iter().collect_vec());
 
     let TestContext { client, .. } = test_builder.finalize().await;
@@ -237,7 +240,7 @@ async fn concurrent_tx_submission_produces_expected_number_of_blocks() {
         })
         .collect_vec();
 
-    let _submitted_transactions: Vec<_> = join_all(tasks)
+    let _: Vec<_> = join_all(tasks)
         .await
         .into_iter()
         .try_collect()
