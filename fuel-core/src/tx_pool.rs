@@ -18,6 +18,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{error::Error as StdError, sync::Arc};
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TransactionStatus {
@@ -66,6 +67,7 @@ pub struct TxPool {
     executor: Executor,
     db: Database,
     fuel_txpool: Box<dyn TxPoolTrait>,
+    block_lock: Mutex<()>,
 }
 
 impl TxPool {
@@ -86,12 +88,16 @@ impl TxPool {
                 Box::new(database) as Box<dyn TxPoolDb>,
                 config.tx_pool_config,
             )),
+            block_lock: Default::default(),
         }
     }
 
     pub async fn submit_tx(&self, tx: Transaction) -> Result<Bytes32, Error> {
         // verify predicates
         self.executor.verify_tx_predicates(&tx)?;
+
+        // Use a mutex to prevent other blocks from being produced while one is already in progress
+        let _block_production_guard = self.block_lock.lock().await;
 
         let db = self.db.clone();
 

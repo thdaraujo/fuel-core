@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 // Tests involving utxo-validation enabled
 use crate::helpers::{TestContext, TestSetupBuilder};
 use fuel_core_interfaces::common::{
@@ -5,7 +6,8 @@ use fuel_core_interfaces::common::{
     fuel_vm::{consts::*, prelude::*},
 };
 use fuel_crypto::SecretKey;
-use fuel_gql_client::client::types::TransactionStatus;
+use fuel_gql_client::client::{types::TransactionStatus, PageDirection, PaginationRequest};
+use futures::future::join_all;
 use itertools::Itertools;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
@@ -191,4 +193,80 @@ async fn dry_run_no_utxo_validation_override() {
     // verify that the client validated the inputs and failed the tx
     let res = client.dry_run_opt(&tx, None).await;
     assert!(res.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn concurrent_tx_submission_produces_expected_number_of_blocks() {
+    const TEST_TXS: usize = 10;
+
+    let mut rng = StdRng::seed_from_u64(2322u64);
+    let mut test_builder = TestSetupBuilder::new(100);
+
+    let secret = SecretKey::random(&mut rng);
+    let txs = (0..TEST_TXS)
+        .into_iter()
+        .map(|i| {
+            TransactionBuilder::script(
+                Opcode::RET(REG_ONE).to_bytes().into_iter().collect(),
+                vec![],
+            )
+            .gas_limit(1000 + i as u64)
+            .add_unsigned_coin_input(
+                rng.gen(),
+                &secret,
+                rng.gen_range(1..1000),
+                Default::default(),
+                0,
+            )
+            .add_output(Output::change(rng.gen(), 0, Default::default()))
+            .finalize()
+        })
+        .collect_vec();
+
+    let tx_ids: HashSet<_> = txs.iter().map(|tx| tx.id()).collect();
+
+    test_builder.config_coin_inputs_from_transactions(&txs.iter().collect_vec());
+
+    let TestContext { client, .. } = test_builder.finalize().await;
+
+    let tasks = txs
+        .into_iter()
+        .map(|tx| {
+            let client = client.clone();
+            async move { client.submit(&tx).await }
+        })
+        .collect_vec();
+
+    let _submitted_transactions: Vec<_> = join_all(tasks)
+        .await
+        .into_iter()
+        .try_collect()
+        .expect("expected successful transactions");
+
+    let total_blocks = client
+        .blocks(PaginationRequest {
+            results: TEST_TXS * 2,
+            direction: PageDirection::Forward,
+            cursor: None,
+        })
+        .await
+        .unwrap();
+
+    // ensure block heights are all unique
+    let deduped = total_blocks
+        .results
+        .iter()
+        .map(|b| b.height.0)
+        .dedup()
+        .collect_vec();
+
+    // ensure all transactions are included across all the blocks
+    let included_txs: HashSet<Bytes32> = total_blocks
+        .results
+        .iter()
+        .flat_map(|b| b.transactions.iter().map(|t| t.id.clone().into()))
+        .collect();
+
+    assert_eq!(total_blocks.results.len(), deduped.len());
+    assert_eq!(included_txs, tx_ids);
 }
