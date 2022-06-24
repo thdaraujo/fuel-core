@@ -12,6 +12,7 @@ pub struct Modules {
     pub block_producer: Arc<fuel_block_producer::Service>,
     pub bft: Arc<fuel_core_bft::Service>,
     pub sync: Arc<fuel_sync::Service>,
+    pub relayer: Arc<fuel_relayer::Service>,
 }
 
 impl Modules {
@@ -38,7 +39,7 @@ pub async fn start_modules(config: &Config, database: &Database) -> Result<Modul
     let block_producer = fuel_block_producer::Service::new(&config.block_producer, db).await?;
     let bft = fuel_core_bft::Service::new(&config.bft, db).await?;
     let sync = fuel_sync::Service::new(&config.sync).await?;
-    // let mut relayer = FuelRelayer::new(FuelRelayerConfig::default());
+    let relayer = fuel_relayer::Service::new(FuelRelayerConfig::default()).await;
     // let mut p2p = FuelP2P::new(FuelP2PConfig::default());
     let txpool = fuel_txpool::Service::new(
         Box::new(database.clone()) as Box<dyn TxPoolDb>,
